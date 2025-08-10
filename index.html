@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Nico: Paws in the Park — Sheep + Treats + Forest (Final)</title>
+<title>Nico: Paws in the Park — Sheep + Treats + Forest</title>
 <style>
   html, body { margin:0; height:100%; background:#0b1020; }
   body { display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:manipulation; }
-  canvas { display:block; width:100vw; height:100vh; }
+  canvas { display:block; width:100vw; height:100vh; background:#0b1020; }
   .hud {
     position:fixed; top:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center;
     font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; color:#e9ecf1; pointer-events:none;
@@ -35,12 +35,12 @@
   function reportErr(e){ errEl.textContent = 'Error: ' + (e && e.message ? e.message : e); }
 
   const canvas = document.getElementById('game');
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { alpha:false });
   if(!ctx){ reportErr('Canvas not supported'); return; }
 
-  // Handle DPI scaling
+  // === DPI scaling & world units ===
   let W=0, H=0, DPR=1, SCALE=1;
-  function resize() {
+  function resize(){
     DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     W = Math.floor(window.innerWidth);
     H = Math.floor(window.innerHeight);
@@ -49,13 +49,24 @@
     canvas.style.width = W + 'px';
     canvas.style.height = H + 'px';
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    SCALE = H / 720; // base world height = 720
+    SCALE = H / 720; // base logical height
   }
   window.addEventListener('resize', resize, {passive:true});
   resize();
 
-  // ====== Simple vector sprites ======
-  const drawDog = (x,y,w,h,color,legPhase=0) => {
+  // === Helpers ===
+  function roundRect(x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  // === Sprites (vector) ===
+  function drawDog(x,y,w,h,color,legPhase=0){
     ctx.save();
     ctx.translate(x,y);
     ctx.fillStyle = color;
@@ -87,12 +98,12 @@
     ctx.quadraticCurveTo(-w*0.48, -h*0.06, -w*0.45, -h*0.08);
     ctx.fill(); ctx.stroke();
 
-    // legs (simple alternating animation)
+    // legs
     const a = Math.sin(legPhase)*6;
     drawLeg(w*0.18, h*0.12, a);
     drawLeg(-w*0.10, h*0.12, -a);
     ctx.restore();
-  };
+  }
   function drawLeg(x, y, angleDeg){
     ctx.save();
     ctx.translate(x, y);
@@ -104,56 +115,8 @@
     ctx.fill();
     ctx.restore();
   }
-  function roundRect(x, y, w, h, r){
-    ctx.beginPath();
-    ctx.moveTo(x+r, y);
-    ctx.arcTo(x+w, y, x+w, y+h, r);
-    ctx.arcTo(x+w, y+h, x, y+h, r);
-    ctx.arcTo(x, y+h, x, y, r);
-    ctx.arcTo(x, y, x+w, y, r);
-    ctx.closePath();
-  }
 
-  // Treat drawings
-  function drawBone(x,y,s=1, golden=false){
-    ctx.save();
-    ctx.translate(x,y);
-    ctx.scale(s,s);
-    ctx.fillStyle = golden ? '#ffd65a' : '#f5ebcf';
-    ctx.strokeStyle = golden ? '#e0b53c' : '#c9b997';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(-16, 0, 8, 0, Math.PI*2);
-    ctx.arc(-8, -8, 8, 0, Math.PI*2);
-    ctx.arc(16, 0, 8, 0, Math.PI*2);
-    ctx.arc(8, -8, 8, 0, Math.PI*2);
-    ctx.moveTo(-8, -8); ctx.lineTo(8, -8);
-    ctx.moveTo(-16, 0); ctx.lineTo(16, 0);
-    ctx.fill(); ctx.stroke();
-    ctx.restore();
-  }
-  function drawBiscuit(x,y,s=1){
-    ctx.save();
-    ctx.translate(x,y); ctx.scale(s,s);
-    ctx.fillStyle='#d7a86e'; ctx.strokeStyle='#b58652'; ctx.lineWidth=2;
-    roundRect(-18,-12,36,24,10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='rgba(0,0,0,0.18)';
-    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ ctx.beginPath(); ctx.arc(i*8, j*6, 1.8, 0, Math.PI*2); ctx.fill(); }
-    ctx.restore();
-  }
-  function drawSteak(x,y,s=1){
-    ctx.save();
-    ctx.translate(x,y); ctx.scale(s,s);
-    ctx.fillStyle='#d14b4b'; ctx.strokeStyle='#a13a3a'; ctx.lineWidth=2;
-    ctx.beginPath();
-    ctx.moveTo(-22,0); ctx.quadraticCurveTo(-10,-20,10,-16); ctx.quadraticCurveTo(24,-10,18,8); ctx.quadraticCurveTo(0,18,-20,12); ctx.closePath();
-    ctx.fill(); ctx.stroke();
-    ctx.strokeStyle='#fff3f0'; ctx.lineWidth=3;
-    ctx.beginPath(); ctx.moveTo(-10,-6); ctx.quadraticCurveTo(2,-10,10,-4); ctx.stroke();
-    ctx.restore();
-  }
-
-  // Sheep obstacle
+  // Sheep
   function drawSheep(x,y,w,h,phase=0){
     ctx.save();
     ctx.translate(x, y);
@@ -180,7 +143,7 @@
     ctx.lineTo(bodyW*0.50, -bodyH*0.90);
     ctx.lineTo(bodyW*0.44, -bodyH*0.76);
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    // legs (little dangle)
+    // legs (tiny wiggle)
     const legA = Math.sin(phase)*4;
     drawSheepLeg(-bodyW*0.18, -bodyH*0.2, legA);
     drawSheepLeg(bodyW*0.05, -bodyH*0.2, -legA);
@@ -205,30 +168,136 @@
     ctx.restore();
   }
 
-  // ====== Game world ======
+  // Treats
+  function drawBone(x,y,s=1, golden=false){
+    ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle = golden ? '#ffd65a' : '#f5ebcf';
+    ctx.strokeStyle = golden ? '#e0b53c' : '#c9b997';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(-16, 0, 8, 0, Math.PI*2);
+    ctx.arc(-8, -8, 8, 0, Math.PI*2);
+    ctx.arc(16, 0, 8, 0, Math.PI*2);
+    ctx.arc(8, -8, 8, 0, Math.PI*2);
+    ctx.moveTo(-8, -8); ctx.lineTo(8, -8);
+    ctx.moveTo(-16, 0); ctx.lineTo(16, 0);
+    ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+  function drawBiscuit(x,y,s=1){
+    ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle='#d7a86e'; ctx.strokeStyle='#b58652'; ctx.lineWidth=2;
+    roundRect(-18,-12,36,24,10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ ctx.beginPath(); ctx.arc(i*8, j*6, 1.8, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  function drawSteak(x,y,s=1){
+    ctx.save(); ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle='#d14b4b'; ctx.strokeStyle='#a13a3a'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(-22,0); ctx.quadraticCurveTo(-10,-20,10,-16); ctx.quadraticCurveTo(24,-10,18,8); ctx.quadraticCurveTo(0,18,-20,12); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle='#fff3f0'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(-10,-6); ctx.quadraticCurveTo(2,-10,10,-4); ctx.stroke();
+    ctx.restore();
+  }
+
+  // === Particles (hearts & sparkles) ===
+  const particles = []; // {x,y,vx,vy,life,max, type, size, rot, spin}
+  function spawnHeartBurst(x,y){
+    const n = 7 + (Math.random()*3|0);
+    for(let i=0;i<n;i++){
+      particles.push({
+        type:'heart',
+        x, y,
+        vx:(Math.random()*120-60)*SCALE,
+        vy:(-160 - Math.random()*100)*SCALE,
+        life:0, max:0.9 + Math.random()*0.5,
+        size: 10*SCALE + Math.random()*6*SCALE,
+        rot: Math.random()*Math.PI, spin:(Math.random()*2-1)*2
+      });
+    }
+  }
+  function spawnSparkles(x,y){
+    const n = 10 + (Math.random()*6|0);
+    for(let i=0;i<n;i++){
+      particles.push({
+        type:'sparkle',
+        x, y,
+        vx:(Math.random()*200-100)*SCALE,
+        vy:(Math.random()*-140-40)*SCALE,
+        life:0, max:0.6 + Math.random()*0.5,
+        size: 6*SCALE + Math.random()*4*SCALE,
+        rot: Math.random()*Math.PI, spin:(Math.random()*2-1)*6
+      });
+    }
+  }
+  function drawHeartShape(size){
+    // parametric heart curve approximated with Bezier
+    ctx.beginPath();
+    ctx.moveTo(0, size*0.35);
+    ctx.bezierCurveTo(-size, -size*0.3, -size*0.1, -size, 0, -size*0.5);
+    ctx.bezierCurveTo(size*0.1, -size, size, -size*0.3, 0, size*0.35);
+    ctx.closePath();
+  }
+  function drawSparkle(size){
+    ctx.beginPath();
+    for(let i=0;i<4;i++){
+      ctx.moveTo(0,0);
+      ctx.lineTo(size,0);
+      ctx.rotate(Math.PI/2);
+    }
+  }
+  function updateParticles(dt){
+    for(let i=particles.length-1;i>=0;i--){
+      const p = particles[i];
+      p.life += dt;
+      if(p.life >= p.max){ particles.splice(i,1); continue; }
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vy += 500 * SCALE * dt; // gravity
+      p.rot += p.spin * dt;
+    }
+  }
+  function renderParticles(){
+    for(const p of particles){
+      const alpha = Math.max(0, 1 - p.life/p.max);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot); ctx.globalAlpha = alpha;
+      if(p.type==='heart'){
+        ctx.fillStyle = '#ff4a5f'; ctx.strokeStyle = '#b21f35'; ctx.lineWidth = 1.5;
+        drawHeartShape(p.size);
+        ctx.fill(); ctx.stroke();
+      }else{
+        ctx.strokeStyle = '#fff1b3'; ctx.lineWidth = 2;
+        drawSparkle(p.size);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // === World & entities ===
   const world = {
     groundY: () => H*0.80,
-    speed: 340,             // px/s base
-    speedIncrease: 0.02,    // per second
+    speed: 340,
+    speedIncrease: 0.02,
     t: 0
   };
 
-  // Player "Nico" (black)
   const player = {
     x: () => W*0.20,
     y: 0,
     w: () => 90*SCALE,
     h: () => 70*SCALE,
     vy: 0,
-    color: '#0b0b0b',
     onGround: true,
     legPhase: 0
   };
 
-  // Obstacles and treats
-  const obstacles = []; // {x,y,w,h, type:'sheep', phase, scale}
+  const obstacles = []; // {x,y,w,h,type,phase,passed}
   const treats = [];    // {x,y,r,type,points,collected}
   const floatTexts = []; // {x,y,alpha,vy,txt}
+
   let nextSpawnT = 0;
   let score = 0;
   let best = Number(localStorage.getItem('nico_best_sheep')||0);
@@ -242,7 +311,7 @@
     if(e.code==='Space' || e.code==='ArrowUp' || e.code==='KeyW'){ e.preventDefault(); queueJump(); }
   });
 
-  // Fullscreen + restart buttons
+  // Buttons
   document.getElementById('fsBtn').addEventListener('click', ()=>{
     const el = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen();
@@ -258,7 +327,7 @@
     return {g, jumpVy};
   }
 
-  // Treat types with weights and points
+  // Treat types
   const TREAT_TYPES = [
     {type:'biscuit', points:10, weight:0.35},
     {type:'bone',    points:15, weight:0.35},
@@ -274,53 +343,39 @@
     return TREAT_TYPES[0];
   }
 
-  // Spawn sheep obstacle + treat
+  // Spawning
   function spawnObstacle(){
-    const s = 0.9 + Math.random()*0.6; // random scale
-    const w = 100*SCALE*s;
-    const h = 70*SCALE*s;
-    const y = world.groundY();
-    obstacles.push({x: W + w, y, w, h, type:'sheep', phase: Math.random()*Math.PI*2, scale:s, passed:false});
-    // trailing treat(s)
-    if(Math.random()<0.8){
+    const s = 0.9 + Math.random()*0.6;
+    const w = 100*SCALE*s, h = 70*SCALE*s, y = world.groundY();
+    obstacles.push({x: W + w, y, w, h, type:'sheep', phase: Math.random()*Math.PI*2, passed:false});
+    // trailing treats
+    if(Math.random() < 0.8){
       const tt = pickTreatType();
       treats.push({
         x: W + w + (90+Math.random()*140)*SCALE,
         y: y - (h + (20+Math.random()*40)*SCALE),
-        r: 16*SCALE,
-        type: tt.type,
-        points: tt.points,
-        collected:false
+        r: 16*SCALE, type: tt.type, points: tt.points, collected:false
       });
-      if(Math.random()<0.25){
+      if(Math.random() < 0.25){
         const tt2 = pickTreatType();
         treats.push({
           x: W + w + (220+Math.random()*120)*SCALE,
           y: y - (h + (28+Math.random()*40)*SCALE),
-          r: 16*SCALE,
-          type: tt2.type,
-          points: tt2.points,
-          collected:false
+          r: 16*SCALE, type: tt2.type, points: tt2.points, collected:false
         });
       }
     }
   }
 
-  // Reset game
+  // Reset
   let state = 'menu'; // 'menu' | 'play' | 'dead'
   function reset(startPlay=false){
-    obstacles.length = 0;
-    treats.length = 0;
-    floatTexts.length = 0;
-    world.speed = 340;
-    world.t = 0;
+    obstacles.length = 0; treats.length = 0; floatTexts.length = 0; particles.length = 0;
+    world.speed = 340; world.t = 0;
     const {g} = phys();
     player.y = world.groundY() - player.h()/2;
-    player.vy = 0;
-    player.onGround = true;
-    player.legPhase = 0;
-    score = 0;
-    nextSpawnT = 0;
+    player.vy = 0; player.onGround = true; player.legPhase = 0;
+    score = 0; nextSpawnT = 0;
     state = startPlay ? 'play' : 'menu';
   }
   reset(false);
@@ -336,133 +391,13 @@
     return dx*dx + dy*dy <= cr*cr;
   }
 
-  // Main loop
-  let lastTs = 0;
-  function loop(ts){
-    try{
-      requestAnimationFrame(loop);
-      if(!lastTs) lastTs = ts;
-      let dt = Math.min(0.033, (ts - lastTs)/1000); // clamp to 33ms
-      lastTs = ts;
-      world.t += dt;
-
-      // Clear & background
-      ctx.clearRect(0,0,W,H);
-      drawBackground(dt);
-
-      if(state==='menu'){
-        drawGround();
-        drawPlayer(dt);
-        drawObstacles(dt, true);
-        drawTreats(dt);
-        drawFloatTexts(dt);
-        drawTitle();
-        if(jumpQueued){ jumpQueued=false; reset(true); }
-        return;
-      }
-      if(state==='dead'){
-        drawGround();
-        drawPlayer(dt);
-        drawObstacles(dt, true);
-        drawTreats(dt);
-        drawFloatTexts(dt);
-        drawGameOver();
-        if(jumpQueued){ jumpQueued=false; reset(true); }
-        return;
-      }
-
-      // === Update (play) ===
-      const {g, jumpVy} = phys();
-      world.speed += world.speedIncrease;
-      if(jumpQueued && player.onGround){
-        player.vy = jumpVy;
-        player.onGround = false;
-      }
-      jumpQueued = false;
-
-      player.vy += g * dt;
-      player.y += player.vy * dt;
-      const gy = world.groundY() - player.h()/2;
-      if(player.y > gy){ player.y = gy; player.vy = 0; player.onGround = true; }
-      player.legPhase += dt * (player.onGround ? 18 : 0);
-
-      nextSpawnT -= dt;
-      if(nextSpawnT <= 0){
-        spawnObstacle();
-        nextSpawnT = 1.0 + Math.random()*0.9;
-      }
-
-      for(const o of obstacles){
-        o.x -= world.speed * dt;
-        o.phase += dt*6;
-        if(!o.passed && o.x + o.w/2 < player.x() - player.w()/2) o.passed = true;
-      }
-      for(const t of treats){ t.x -= world.speed * dt * 1.02; }
-
-      while(obstacles.length && obstacles[0].x + obstacles[0].w < -50) obstacles.shift();
-      while(treats.length && treats[0].x + treats[0].r < -50) treats.shift();
-
-      const px = player.x(), py = player.y, pw = player.w(), ph = player.h();
-      for(const o of obstacles){
-        if(aabb(px, py, pw, ph, o.x, o.y - o.h/2, o.w*0.9, o.h*0.9)){
-          state = 'dead';
-          best = Math.max(best, Math.floor(score));
-          localStorage.setItem('nico_best_sheep', String(best));
-        }
-      }
-      for(const t of treats){
-        if(!t.collected && circleRect(t.x, t.y, t.r, px, py, pw, ph)){
-          t.collected = true;
-          score += t.points;
-          floatTexts.push({ x: px, y: py - ph*0.6, alpha: 1, vy: -30*SCALE, txt: 'Good boy Nico! +' + t.points });
-        }
-      }
-
-      // time score
-      score += dt * 5; // 5 pts/sec
-      scoreTxt.textContent = 'Score: ' + Math.floor(score) + '  •  Best: ' + best;
-
-      drawGround();
-      drawObstacles(dt);
-      drawTreats(dt);
-      drawPlayer(dt);
-      drawFloatTexts(dt);
-
-      if(errEl.textContent) errEl.textContent = '';
-    } catch (e){
-      reportErr(e);
-    }
-  }
-  requestAnimationFrame(loop);
-
-  // ====== Rendering helpers ======
-  function drawBackground(dt){
-    // blue sky gradient
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0, '#81c7ff');
-    g.addColorStop(0.5, '#5aaaf2');
-    g.addColorStop(1, '#2e6fd0');
-    ctx.fillStyle = g;
-    ctx.fillRect(0,0,W,H);
-
-    // soft clouds
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    const spacing = 240*SCALE;
-    const count = Math.ceil(W/spacing)+2;
-    const offset = (world.t*18) % spacing;
-    for(let i=0;i<count;i++){
-      const x = i*spacing - offset;
-      drawCloud(x, H*0.20, 60*SCALE);
-      drawCloud(x+100*SCALE, H*0.28, 48*SCALE);
-    }
-
-    // distant hills
-    drawHills(H*0.72, '#6aa3e6', 160*SCALE, world.t*10);
-    drawHills(H*0.76, '#4b8ad8', 190*SCALE, world.t*18);
-
-    // Forest layers (deterministic)
-    drawForestLayer(H*0.78, 120*SCALE, world.t*28, '#2f6e3a', '#1e4b27', 0);
-    drawForestLayer(H*0.79, 160*SCALE, world.t*36, '#3a8546', '#255a30', 1);
+  // Background helpers
+  function drawCloud(x,y,s){
+    ctx.beginPath();
+    ctx.arc(x, y, s*0.6, 0, Math.PI*2);
+    ctx.arc(x+s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
+    ctx.arc(x-s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
+    ctx.fill();
   }
   function drawHills(y, color, spacing, speed){
     ctx.fillStyle = color;
@@ -499,31 +434,132 @@
       ctx.fill();
     }
   }
-  function drawCloud(x,y,s){
-    ctx.beginPath();
-    ctx.arc(x, y, s*0.6, 0, Math.PI*2);
-    ctx.arc(x+s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
-    ctx.arc(x-s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
-    ctx.fill();
+
+  // Main loop
+  let lastTs = 0;
+  function loop(ts){
+    try{
+      requestAnimationFrame(loop);
+      if(!lastTs) lastTs = ts;
+      const dt = Math.min(0.033, (ts - lastTs)/1000);
+      lastTs = ts;
+      world.t += dt;
+
+      // background
+      ctx.clearRect(0,0,W,H);
+      const g = ctx.createLinearGradient(0,0,0,H);
+      g.addColorStop(0, '#81c7ff'); g.addColorStop(0.5, '#5aaaf2'); g.addColorStop(1, '#2e6fd0');
+      ctx.fillStyle = g; ctx.fillRect(0,0,W,H);
+      // clouds
+      ctx.fillStyle = 'rgba(255,255,255,0.12)';
+      const spacing = 240*SCALE, count = Math.ceil(W/spacing)+2, offset = (world.t*18)%spacing;
+      for(let i=0;i<count;i++){
+        const x = i*spacing - offset;
+        drawCloud(x, H*0.20, 60*SCALE);
+        drawCloud(x+100*SCALE, H*0.28, 48*SCALE);
+      }
+      // hills & forest
+      drawHills(H*0.72, '#6aa3e6', 160*SCALE, world.t*10);
+      drawHills(H*0.76, '#4b8ad8', 190*SCALE, world.t*18);
+      drawForestLayer(H*0.78, 120*SCALE, world.t*28, '#2f6e3a', '#1e4b27', 0);
+      drawForestLayer(H*0.79, 160*SCALE, world.t*36, '#3a8546', '#255a30', 1);
+      // ground
+      const gy = world.groundY();
+      const grass = ctx.createLinearGradient(0, gy-40, 0, H);
+      grass.addColorStop(0, '#49a35b'); grass.addColorStop(1, '#2e7d32');
+      ctx.fillStyle = grass; ctx.fillRect(0, gy, W, H-gy);
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, gy-1); ctx.lineTo(W, gy-1); ctx.stroke();
+
+      if(state==='menu'){
+        drawPlayer(0);
+        drawObstacles(0, true);
+        drawTreats();
+        renderParticles();
+        drawFloatTexts(0);
+        drawTitle();
+        if(jumpQueued){ jumpQueued=false; reset(true); }
+        return;
+      }
+      if(state==='dead'){
+        drawPlayer(0);
+        drawObstacles(0, true);
+        drawTreats();
+        renderParticles();
+        drawFloatTexts(0);
+        drawGameOver();
+        if(jumpQueued){ jumpQueued=false; reset(true); }
+        return;
+      }
+
+      // === Update (play) ===
+      const {g:grav, jumpVy} = phys();
+      world.speed += world.speedIncrease;
+      if(jumpQueued && player.onGround){
+        player.vy = jumpVy; player.onGround = false;
+      }
+      jumpQueued = false;
+
+      player.vy += grav * dt;
+      player.y += player.vy * dt;
+      const groundY = gy - player.h()/2;
+      if(player.y > groundY){ player.y = groundY; player.vy = 0; player.onGround = true; }
+      player.legPhase += dt * (player.onGround ? 18 : 0);
+
+      nextSpawnT -= dt;
+      if(nextSpawnT <= 0){
+        spawnObstacle();
+        nextSpawnT = 1.0 + Math.random()*0.9;
+      }
+
+      for(const o of obstacles){
+        o.x -= world.speed * dt;
+        o.phase = (o.phase || 0) + dt*6;
+      }
+      for(const t of treats) t.x -= world.speed * dt * 1.02;
+
+      while(obstacles.length && obstacles[0].x + obstacles[0].w < -60) obstacles.shift();
+      while(treats.length && treats[0].x + treats[0].r < -60) treats.shift();
+
+      const px = player.x(), py = player.y, pw = player.w(), ph = player.h();
+      for(const o of obstacles){
+        if(aabb(px, py, pw, ph, o.x, o.y - o.h/2, o.w*0.9, o.h*0.9)){
+          state = 'dead';
+          best = Math.max(best, Math.floor(score));
+          localStorage.setItem('nico_best_sheep', String(best));
+        }
+      }
+      for(const t of treats){
+        if(!t.collected && circleRect(t.x, t.y, t.r, px, py, pw, ph)){
+          t.collected = true;
+          score += t.points;
+          // effects
+          spawnHeartBurst(px + pw*0.1, py - ph*0.5);
+          spawnSparkles(px + pw*0.1, py - ph*0.5);
+          // text
+          floatTexts.push({ x: px, y: py - ph*0.6, alpha: 1, vy: -30*SCALE, txt: 'Good boy Nico! +' + t.points });
+        }
+      }
+
+      // score
+      score += dt * 5;
+      scoreTxt.textContent = 'Score: ' + Math.floor(score) + '  •  Best: ' + best;
+
+      // draw
+      drawObstacles(dt);
+      drawTreats();
+      drawPlayer(dt);
+      updateParticles(dt); renderParticles();
+      drawFloatTexts(dt);
+
+      if(errEl.textContent) errEl.textContent = '';
+    } catch(e){ reportErr(e); }
   }
-  function drawGround(){
-    const gy = world.groundY();
-    const grass = ctx.createLinearGradient(0, gy-40, 0, H);
-    grass.addColorStop(0, '#49a35b');
-    grass.addColorStop(1, '#2e7d32');
-    ctx.fillStyle = grass;
-    ctx.fillRect(0, gy, W, H-gy);
-    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, gy-1); ctx.lineTo(W, gy-1); ctx.stroke();
-  }
-  function drawPlayer(dt){
-    drawDog(player.x(), player.y, player.w(), player.h(), '#0b0b0b', player.legPhase);
-  }
+  requestAnimationFrame(loop);
+
+  function drawPlayer(dt){ drawDog(player.x(), player.y, player.w(), player.h(), '#0b0b0b', player.legPhase); }
   function drawObstacles(dt){
-    for(const o of obstacles){
-      drawSheep(o.x, o.y, o.w, o.h, o.phase);
-    }
+    for(const o of obstacles) drawSheep(o.x, o.y, o.w, o.h, o.phase||0);
   }
   function drawTreats(){
     for(const t of treats){
@@ -533,25 +569,16 @@
       else if(t.type==='goldbone') drawBone(t.x, t.y, SCALE*1.25, true);
       else if(t.type==='steak') drawSteak(t.x, t.y, SCALE*1.2);
     }
-    for(const t of treats){
-      if(t.collected){
-        t.y -= 80 * SCALE / 60;
-        t.r *= 0.94;
-        if(t.r < 2) t.x = -9999;
-      }
-    }
   }
   function drawFloatTexts(dt){
-    for(const ft of floatTexts){
-      ft.y += ft.vy * dt;
-      ft.alpha -= dt * 1.2;
-    }
-    for(const ft of floatTexts){
-      if(ft.alpha <= 0) continue;
+    for(const ft of floatTexts){ ft.y += ft.vy * dt; ft.alpha -= dt * 1.2; }
+    for(let i=floatTexts.length-1;i>=0;i--){
+      const ft = floatTexts[i];
+      if(ft.alpha <= 0){ floatTexts.splice(i,1); continue; }
       ctx.save();
       ctx.globalAlpha = Math.max(0, Math.min(1, ft.alpha));
       ctx.fillStyle = '#fff3c2';
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
       ctx.lineWidth = 3;
       ctx.textAlign = 'center';
       ctx.font = Math.floor(24*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
@@ -559,18 +586,11 @@
       ctx.fillText(ft.txt, ft.x, ft.y);
       ctx.restore();
     }
-    for(let i=floatTexts.length-1;i>=0;i--){
-      if(floatTexts[i].alpha <= 0){ floatTexts.splice(i,1); }
-    }
   }
   function drawTitle(){
     ctx.save();
-    ctx.fillStyle = '#0b0b0b';
-    ctx.globalAlpha = 0.25;
-    ctx.fillRect(W*0.18, H*0.22, W*0.64, H*0.20);
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(W*0.18, H*0.22, W*0.64, H*0.20);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
     ctx.font = Math.floor(44*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillText('Nico: Paws in the Park', W/2, H*0.32);
     ctx.font = Math.floor(20*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
@@ -585,21 +605,18 @@
     ctx.fillRect(W*0.2, H*0.26, W*0.6, H*0.42);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth=2;
     ctx.strokeRect(W*0.2, H*0.26, W*0.6, H*0.42);
-    ctx.fillStyle = '#e9ecf1';
-    ctx.textAlign = 'center';
+    ctx.fillStyle = '#e9ecf1'; ctx.textAlign = 'center';
     ctx.font = Math.floor(40*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillText('Game Over', W/2, H*0.36);
     ctx.font = Math.floor(20*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillText('Score: ' + Math.floor(score) + '   Best: ' + best, W/2, H*0.42);
-    ctx.fillStyle = '#cfe1ff';
-    ctx.fillText('Tap to restart', W/2, H*0.50);
+    ctx.fillStyle = '#cfe1ff'; ctx.fillText('Tap to restart', W/2, H*0.50);
     ctx.fillStyle = '#f2f6ff';
     ctx.font = Math.floor(18*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
-    ctx.fillText('Time to go home Nico, we\\'ll be back again soon', W/2, H*0.56);
+    ctx.fillText('Time to go home Nico, we\'ll be back soon!', W/2, H*0.56);
     ctx.restore();
   }
 
-  // Pause when not visible
   document.addEventListener('visibilitychange', ()=>{ lastTs = 0; });
 })();
 </script>
