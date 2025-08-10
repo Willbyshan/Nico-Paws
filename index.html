@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Nico: Paws in the Park — Sheep + Treats + Forest</title>
+<title>Nico: Paws in the Park — Sheep + Treats + Forest (SFX + Music)</title>
 <style>
   html, body { margin:0; height:100%; background:#0b1020; }
   body { display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:manipulation; }
@@ -23,6 +23,8 @@
 <div class="hud">
   <div id="scoreTxt">Score: 0</div>
   <div class="btns">
+    <button id="soundBtn" class="btn">🔊 Sound</button>
+    <button id="musicBtn" class="btn">🎵 Music</button>
     <button id="fsBtn" class="btn">Fullscreen</button>
     <button id="restartBtn" class="btn">Restart</button>
   </div>
@@ -53,6 +55,109 @@
   }
   window.addEventListener('resize', resize, {passive:true});
   resize();
+
+  // === Audio (WebAudio SFX) ===
+  const soundBtn = document.getElementById('soundBtn');
+  const audio = {
+    ctx: null, master: null, enabled: (localStorage.getItem('nico_sound') ?? 'on') !== 'off', started:false
+  };
+  function ensureAudioStarted(){
+    try{
+      if(!audio.ctx){
+        const AC = window.AudioContext || window.webkitAudioContext;
+        audio.ctx = new AC();
+        audio.master = audio.ctx.createGain();
+        audio.master.gain.value = 0.4;
+        audio.master.connect(audio.ctx.destination);
+      }
+      if(audio.ctx.state === 'suspended'){ audio.ctx.resume(); }
+      audio.started = true;
+    }catch(e){ /* ignore */ }
+  }
+  function setSoundUI(){
+    soundBtn.textContent = audio.enabled ? '🔊 Sound' : '🔇 Sound';
+    localStorage.setItem('nico_sound', audio.enabled ? 'on' : 'off');
+  }
+  setSoundUI();
+  soundBtn.addEventListener('click', () => {
+    audio.enabled = !audio.enabled;
+    if(audio.enabled) ensureAudioStarted();
+    setSoundUI();
+  });
+  function tone(freq, dur, {type='sine', vol=0.2, attack=0.005, release=0.08, start=0}={}){
+    if(!audio.enabled) return;
+    ensureAudioStarted();
+    const now = audio.ctx.currentTime + start;
+    const osc = audio.ctx.createOscillator();
+    const gain = audio.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, now);
+    gain.gain.setValueAtTime(0, now);
+    gain.gain.linearRampToValueAtTime(vol, now + attack);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + attack + Math.max(0.01, dur) + release);
+    osc.connect(gain).connect(audio.master);
+    osc.start(now);
+    osc.stop(now + attack + Math.max(0.01, dur) + release + 0.02);
+  }
+  const SFX = {
+    click(){ tone(600, 0.05, {type:'square', vol:0.15}); },
+    jump(){ tone(700, 0.06, {type:'square', vol:0.2}); tone(980,0.06,{type:'square', vol:0.18, start:0.05}); },
+    pickup(){
+      const base = 1200 + Math.random()*200;
+      tone(base, 0.07, {type:'triangle', vol:0.16});
+      tone(base*1.25, 0.07, {type:'triangle', vol:0.16, start:0.06});
+      tone(base*1.5, 0.10, {type:'triangle', vol:0.14, start:0.12});
+    },
+    gameover(){
+      if(!audio.enabled) return;
+      ensureAudioStarted();
+      const now = audio.ctx.currentTime;
+      const osc = audio.ctx.createOscillator();
+      const gain = audio.ctx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(120, now+0.7);
+      gain.gain.setValueAtTime(0.25, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now+0.8);
+      osc.connect(gain).connect(audio.master);
+      osc.start(now);
+      osc.stop(now+0.85);
+    }
+  };
+
+  // === Background music (HTMLAudio) ===
+  const musicBtn = document.getElementById('musicBtn');
+  const music = {
+    el: new Audio('bgm.mp3'), // Upload this file alongside index.html
+    enabled: (localStorage.getItem('nico_music') ?? 'on') !== 'off',
+    started: false
+  };
+  music.el.loop = true;
+  music.el.preload = 'auto';
+  music.el.volume = 0.25;
+  music.el.crossOrigin = 'anonymous'; // safe for external URLs if later used
+  function setMusicUI(){
+    musicBtn.textContent = music.enabled ? '🎵 Music' : '🔇 Music';
+    localStorage.setItem('nico_music', music.enabled ? 'on' : 'off');
+    if (!music.enabled) { music.el.pause(); } 
+    else if (music.started) { music.el.play().catch(()=>{}); }
+  }
+  setMusicUI();
+  musicBtn.addEventListener('click', () => {
+    music.enabled = !music.enabled;
+    setMusicUI();
+  });
+  function tryStartMusic(){
+    if (music.started || !music.enabled) return;
+    music.started = true;
+    music.el.currentTime = 0;
+    music.el.play().catch(()=>{});
+  }
+
+  // Unlock audio on first user gesture (required by mobile autoplay policies)
+  const unlock = () => { ensureAudioStarted(); tryStartMusic(); };
+  window.addEventListener('pointerdown', unlock, {once:false});
+  window.addEventListener('keydown', unlock, {once:false});
 
   // === Helpers ===
   function roundRect(x, y, w, h, r){
@@ -233,7 +338,6 @@
     }
   }
   function drawHeartShape(size){
-    // parametric heart curve approximated with Bezier
     ctx.beginPath();
     ctx.moveTo(0, size*0.35);
     ctx.bezierCurveTo(-size, -size*0.3, -size*0.1, -size, 0, -size*0.5);
@@ -306,7 +410,7 @@
   // Input
   let jumpQueued = false;
   function queueJump(){ jumpQueued = true; }
-  canvas.addEventListener('pointerdown', (e)=>{ e.preventDefault(); queueJump(); }, {passive:false});
+  canvas.addEventListener('pointerdown', (e)=>{ e.preventDefault(); queueJump(); SFX.click(); }, {passive:false});
   window.addEventListener('keydown', (e)=>{
     if(e.code==='Space' || e.code==='ArrowUp' || e.code==='KeyW'){ e.preventDefault(); queueJump(); }
   });
@@ -316,8 +420,9 @@
     const el = document.documentElement;
     if (el.requestFullscreen) el.requestFullscreen();
     else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    SFX.click();
   });
-  document.getElementById('restartBtn').addEventListener('click', ()=> reset(true));
+  document.getElementById('restartBtn').addEventListener('click', ()=> { reset(true); SFX.click(); });
 
   // Physics constants
   function phys(){ 
@@ -496,7 +601,7 @@
       const {g:grav, jumpVy} = phys();
       world.speed += world.speedIncrease;
       if(jumpQueued && player.onGround){
-        player.vy = jumpVy; player.onGround = false;
+        player.vy = jumpVy; player.onGround = false; SFX.jump();
       }
       jumpQueued = false;
 
@@ -527,6 +632,7 @@
           state = 'dead';
           best = Math.max(best, Math.floor(score));
           localStorage.setItem('nico_best_sheep', String(best));
+          SFX.gameover();
         }
       }
       for(const t of treats){
@@ -536,6 +642,7 @@
           // effects
           spawnHeartBurst(px + pw*0.1, py - ph*0.5);
           spawnSparkles(px + pw*0.1, py - ph*0.5);
+          SFX.pickup();
           // text
           floatTexts.push({ x: px, y: py - ph*0.6, alpha: 1, vy: -30*SCALE, txt: 'Good boy Nico! +' + t.points });
         }
