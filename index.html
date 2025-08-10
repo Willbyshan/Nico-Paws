@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Nico: Paws in the Park — Sheep Edition</title>
+<style>
+  html, body { margin:0; height:100%; background:#0b1020; }
+  body { display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:manipulation; }
+  canvas { display:block; width:100vw; height:100vh; }
+  .hud {
+    position:fixed; top:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif; color:#e9ecf1; pointer-events:none;
+    text-shadow:0 1px 2px rgba(0,0,0,.6);
+  }
+  .hud .btns { pointer-events:auto; display:flex; gap:6px; }
+  .btn { background:#1e2435; color:#e9ecf1; border:1px solid rgba(255,255,255,.12); padding:6px 10px; border-radius:10px; font-size:14px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div class="hud">
+  <div id="scoreTxt">Score: 0</div>
+  <div class="btns">
+    <button id="fsBtn" class="btn">Fullscreen</button>
+    <button id="restartBtn" class="btn">Restart</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // Handle DPI scaling
+  let W=0, H=0, DPR=1, SCALE=1;
+  function resize() {
+    DPR = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+    W = Math.floor(window.innerWidth);
+    H = Math.floor(window.innerHeight);
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    SCALE = H / 720; // base world height = 720
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
+  // ====== Simple vector sprites ======
+  const drawDog = (x,y,w,h,color,legPhase=0) => {
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 2;
+
+    // body
+    const r = h*0.18;
+    roundRect(-w*0.45, -h*0.35, w*0.9, h*0.5, r);
+    ctx.fill(); ctx.stroke();
+
+    // head
+    ctx.beginPath();
+    ctx.ellipse(w*0.28, -h*0.28, w*0.22, h*0.20, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+
+    // ear
+    ctx.beginPath();
+    ctx.moveTo(w*0.35, -h*0.43);
+    ctx.lineTo(w*0.47, -h*0.58);
+    ctx.lineTo(w*0.22, -h*0.46);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // tail
+    ctx.beginPath();
+    ctx.moveTo(-w*0.45, -h*0.24);
+    ctx.quadraticCurveTo(-w*0.60, -h*0.40, -w*0.50, -h*0.10);
+    ctx.quadraticCurveTo(-w*0.48, -h*0.06, -w*0.45, -h*0.08);
+    ctx.fill(); ctx.stroke();
+
+    // legs (simple alternating animation)
+    const a = Math.sin(legPhase)*6;
+    drawLeg(w*0.18, h*0.12, a);
+    drawLeg(-w*0.10, h*0.12, -a);
+    ctx.restore();
+  };
+  function drawLeg(x, y, angleDeg){
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angleDeg * Math.PI/180);
+    ctx.fillStyle = ctx.strokeStyle = ctx.fillStyle || '#000';
+    ctx.fillRect(-4, 0, 8, 28);
+    ctx.beginPath();
+    ctx.ellipse(0, 28, 10, 6, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+  function roundRect(x, y, w, h, r){
+    ctx.beginPath();
+    ctx.moveTo(x+r, y);
+    ctx.arcTo(x+w, y, x+w, y+h, r);
+    ctx.arcTo(x+w, y+h, x, y+h, r);
+    ctx.arcTo(x, y+h, x, y, r);
+    ctx.arcTo(x, y, x+w, y, r);
+    ctx.closePath();
+  }
+
+  // Treat (bone)
+  const drawBone = (x,y,s=1) => {
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.scale(s,s);
+    ctx.fillStyle = '#f5ebcf';
+    ctx.strokeStyle = '#c9b997';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(-16, 0, 8, 0, Math.PI*2);
+    ctx.arc(-8, -8, 8, 0, Math.PI*2);
+    ctx.arc(16, 0, 8, 0, Math.PI*2);
+    ctx.arc(8, -8, 8, 0, Math.PI*2);
+    ctx.moveTo(-8, -8); ctx.lineTo(8, -8);
+    ctx.moveTo(-16, 0); ctx.lineTo(16, 0);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  };
+
+  // Sheep obstacle
+  function drawSheep(x,y,w,h,phase=0){
+    ctx.save();
+    ctx.translate(x, y);
+    const bodyW = w, bodyH = h*0.7;
+    // wool body (cloud blobs)
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#d9d9d9';
+    ctx.lineWidth = 2;
+    cloudBlob(-bodyW*0.2, -bodyH*0.8, bodyW*0.28);
+    cloudBlob(0, -bodyH*0.9, bodyW*0.32);
+    cloudBlob(bodyW*0.2, -bodyH*0.8, bodyW*0.28);
+    cloudBlob(-bodyW*0.1, -bodyH*0.65, bodyW*0.30);
+    cloudBlob(bodyW*0.15, -bodyH*0.65, bodyW*0.30);
+
+    // head (black)
+    ctx.fillStyle = '#2b2b2b';
+    ctx.strokeStyle = '#1b1b1b';
+    ctx.beginPath();
+    ctx.ellipse(bodyW*0.35, -bodyH*0.75, bodyW*0.16, bodyH*0.18, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+    // ear
+    ctx.beginPath();
+    ctx.moveTo(bodyW*0.42, -bodyH*0.82);
+    ctx.lineTo(bodyW*0.50, -bodyH*0.90);
+    ctx.lineTo(bodyW*0.44, -bodyH*0.76);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // legs (little dangle)
+    const legA = Math.sin(phase)*4;
+    drawSheepLeg(-bodyW*0.18, -bodyH*0.2, legA);
+    drawSheepLeg(bodyW*0.05, -bodyH*0.2, -legA);
+    ctx.restore();
+  }
+  function cloudBlob(cx, cy, r){
+    ctx.beginPath();
+    ctx.arc(cx - r*0.5, cy, r*0.55, 0, Math.PI*2);
+    ctx.arc(cx, cy - r*0.25, r*0.65, 0, Math.PI*2);
+    ctx.arc(cx + r*0.5, cy, r*0.55, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+  }
+  function drawSheepLeg(x,y,angleDeg){
+    ctx.save();
+    ctx.translate(x,y);
+    ctx.rotate(angleDeg*Math.PI/180);
+    ctx.fillStyle = '#2b2b2b';
+    ctx.fillRect(-3, 0, 6, 20);
+    ctx.beginPath();
+    ctx.ellipse(0, 20, 6, 3.5, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ====== Game world ======
+  const world = {
+    groundY: () => H*0.80,
+    speed: 340,             // px/s base
+    speedIncrease: 0.02,    // per second
+    t: 0
+  };
+
+  // Player "Nico" (black)
+  const player = {
+    x: () => W*0.20,
+    y: 0,
+    w: () => 90*SCALE,
+    h: () => 70*SCALE,
+    vy: 0,
+    color: '#0b0b0b',
+    onGround: true,
+    legPhase: 0
+  };
+
+  // Obstacles and treats
+  const obstacles = []; // {x,y,w,h, type:'sheep', phase, scale}
+  const treats = [];    // {x,y,r}
+  let nextSpawnT = 0;
+  let score = 0;
+  let best = Number(localStorage.getItem('nico_best_sheep')||0);
+  const scoreTxt = document.getElementById('scoreTxt');
+
+  // Input
+  let jumpQueued = false;
+  function queueJump(){ jumpQueued = true; }
+  canvas.addEventListener('pointerdown', (e)=>{ e.preventDefault(); queueJump(); }, {passive:false});
+  window.addEventListener('keydown', (e)=>{
+    if(e.code==='Space' || e.code==='ArrowUp' || e.code==='KeyW'){ e.preventDefault(); queueJump(); }
+  });
+
+  // Fullscreen + restart buttons
+  document.getElementById('fsBtn').addEventListener('click', ()=>{
+    const el = document.documentElement;
+    if (el.requestFullscreen) el.requestFullscreen();
+    else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+  });
+  document.getElementById('restartBtn').addEventListener('click', ()=> reset(true));
+
+  // Physics constants
+  function phys(){ 
+    const g = 3000 * SCALE;         // gravity px/s^2
+    const jumpH = 220 * SCALE;      // desired jump apex
+    const jumpVy = -Math.sqrt(2*g*jumpH);
+    return {g, jumpVy};
+  }
+
+  // Spawn sheep obstacle
+  function spawnObstacle(){
+    const s = 0.9 + Math.random()*0.6; // random scale
+    const w = 100*SCALE*s;
+    const h = 70*SCALE*s;
+    const y = world.groundY();
+    obstacles.push({x: W + w, y, w, h, type:'sheep', phase: Math.random()*Math.PI*2, scale:s, passed:false});
+    // trailing treat
+    if(Math.random()<0.7){
+      treats.push({ x: W + w + (90+Math.random()*140)*SCALE, y: y - (h + 26*SCALE), r: 16*SCALE, collected:false });
+    }
+  }
+
+  // Reset game
+  let state = 'menu'; // 'menu' | 'play' | 'dead'
+  function reset(startPlay=false){
+    obstacles.length = 0;
+    treats.length = 0;
+    world.speed = 340;
+    world.t = 0;
+    const {g} = phys();
+    player.y = world.groundY() - player.h()/2;
+    player.vy = 0;
+    player.onGround = true;
+    player.legPhase = 0;
+    score = 0;
+    nextSpawnT = 0;
+    state = startPlay ? 'play' : 'menu';
+  }
+  reset(false);
+
+  // Collision helpers
+  function aabb(ax,ay,aw,ah, bx,by,bw,bh){
+    return Math.abs(ax-bx) < (aw/2 + bw/2) && Math.abs(ay-by) < (ah/2 + bh/2);
+  }
+  function circleRect(cx,cy,cr, rx,ry,rw,rh){
+    const closestX = Math.max(rx-rw/2, Math.min(cx, rx+rw/2));
+    const closestY = Math.max(ry-rh/2, Math.min(cy, ry+rh/2));
+    const dx = cx - closestX, dy = cy - closestY;
+    return dx*dx + dy*dy <= cr*cr;
+  }
+
+  // Main loop
+  let lastTs = 0;
+  function loop(ts){
+    requestAnimationFrame(loop);
+    if(!lastTs) lastTs = ts;
+    let dt = Math.min(0.033, (ts - lastTs)/1000); // clamp to 33ms
+    lastTs = ts;
+    world.t += dt;
+
+    // Clear & background
+    ctx.clearRect(0,0,W,H);
+    drawBackground(dt);
+
+    if(state==='menu'){
+      drawGround();
+      drawPlayer(dt);
+      drawObstacles(dt, true);
+      drawTreats(dt);
+      drawTitle();
+      if(jumpQueued){ jumpQueued=false; reset(true); }
+      return;
+    }
+    if(state==='dead'){
+      drawGround();
+      drawPlayer(dt);
+      drawObstacles(dt, true);
+      drawTreats(dt);
+      drawGameOver();
+      if(jumpQueued){ jumpQueued=false; reset(true); }
+      return;
+    }
+
+    // === Update (play) ===
+    const {g, jumpVy} = phys();
+    world.speed += world.speedIncrease;
+    if(jumpQueued && player.onGround){
+      player.vy = jumpVy;
+      player.onGround = false;
+    }
+    jumpQueued = false;
+
+    player.vy += g * dt;
+    player.y += player.vy * dt;
+    const gy = world.groundY() - player.h()/2;
+    if(player.y > gy){ player.y = gy; player.vy = 0; player.onGround = true; }
+    player.legPhase += dt * (player.onGround ? 18 : 0);
+
+    nextSpawnT -= dt;
+    if(nextSpawnT <= 0){
+      spawnObstacle();
+      nextSpawnT = 1.0 + Math.random()*0.9;
+    }
+
+    for(const o of obstacles){
+      o.x -= world.speed * dt;
+      o.phase += dt*6;
+      if(!o.passed && o.x + o.w/2 < player.x() - player.w()/2) o.passed = true;
+    }
+    for(const t of treats){ t.x -= world.speed * dt * 1.02; }
+
+    while(obstacles.length && obstacles[0].x + obstacles[0].w < -50) obstacles.shift();
+    while(treats.length && treats[0].x + treats[0].r < -50) treats.shift();
+
+    const px = player.x(), py = player.y, pw = player.w(), ph = player.h();
+    for(const o of obstacles){
+      if(aabb(px, py, pw, ph, o.x, o.y - o.h/2, o.w*0.9, o.h*0.9)){
+        state = 'dead';
+        best = Math.max(best, Math.floor(score));
+        localStorage.setItem('nico_best_sheep', String(best));
+      }
+    }
+    for(const t of treats){
+      if(!t.collected && circleRect(t.x, t.y, t.r, px, py, pw, ph)){
+        t.collected = true;
+        score += 15;
+      }
+    }
+
+    score += dt * 5; // 5 pts/sec
+    document.getElementById('scoreTxt').textContent = `Score: ${Math.floor(score)}  •  Best: ${best}`;
+
+    drawGround();
+    drawObstacles(dt);
+    drawTreats(dt);
+    drawPlayer(dt);
+  }
+  requestAnimationFrame(loop);
+
+  // ====== Rendering helpers ======
+  function drawBackground(dt){
+    // blue sky gradient
+    const g = ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0, '#81c7ff');
+    g.addColorStop(0.5, '#5aaaf2');
+    g.addColorStop(1, '#2e6fd0');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,W,H);
+
+    // soft clouds
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    const spacing = 240*SCALE;
+    const count = Math.ceil(W/spacing)+2;
+    const offset = (world.t*18) % spacing;
+    for(let i=0;i<count;i++){
+      const x = i*spacing - offset;
+      drawCloud(x, H*0.20, 60*SCALE);
+      drawCloud(x+100*SCALE, H*0.28, 48*SCALE);
+    }
+
+    // distant hills (blue-ish)
+    drawHills(H*0.75, '#3e83d8', 130*SCALE, world.t*12);
+    drawHills(H*0.78, '#2f6ec0', 160*SCALE, world.t*22);
+  }
+  function drawHills(y, color, spacing, speed){
+    ctx.fillStyle = color;
+    const count = Math.ceil(W/spacing)+2;
+    for(let i=0;i<count;i++){
+      const x = i*spacing - (speed % spacing);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x+spacing*0.25, y-spacing*0.20, x+spacing*0.5, y);
+      ctx.quadraticCurveTo(x+spacing*0.75, y+spacing*0.12, x+spacing, y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  function drawCloud(x,y,s){
+    ctx.beginPath();
+    ctx.arc(x, y, s*0.6, 0, Math.PI*2);
+    ctx.arc(x+s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
+    ctx.arc(x-s*0.5, y+s*0.1, s*0.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+  function drawGround(){
+    const gy = world.groundY();
+    // green grass
+    const grass = ctx.createLinearGradient(0, gy-40, 0, H);
+    grass.addColorStop(0, '#49a35b');
+    grass.addColorStop(1, '#2e7d32');
+    ctx.fillStyle = grass;
+    ctx.fillRect(0, gy, W, H-gy);
+    // light highlight line
+    ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, gy-1); ctx.lineTo(W, gy-1); ctx.stroke();
+  }
+  function drawPlayer(dt){
+    drawDog(player.x(), player.y, player.w(), player.h(), '#0b0b0b', player.legPhase);
+  }
+  function drawObstacles(dt){
+    for(const o of obstacles){
+      drawSheep(o.x, o.y, o.w, o.h, o.phase);
+    }
+  }
+  function drawTreats(){
+    for(const t of treats){
+      if(!t.collected) drawBone(t.x, t.y, SCALE*1.2);
+    }
+    for(const t of treats){
+      if(t.collected){
+        t.y -= 80 * SCALE / 60;
+        t.r *= 0.94;
+        if(t.r < 2) t.x = -9999;
+      }
+    }
+  }
+  function drawTitle(){
+    ctx.save();
+    ctx.fillStyle = '#0b0b0b';
+    ctx.globalAlpha = 0.25;
+    ctx.fillRect(W*0.18, H*0.22, W*0.64, H*0.20);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.font = `${Math.floor(44*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.fillText('Nico: Paws in the Park', W/2, H*0.32);
+    ctx.font = `${Math.floor(20*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.fillStyle = '#eef7ff';
+    ctx.fillText('Tap to jump • Collect treats • Avoid sheep', W/2, H*0.38);
+    ctx.fillText('Tap to start', W/2, H*0.48);
+    ctx.restore();
+  }
+  function drawGameOver(){
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(W*0.2, H*0.26, W*0.6, H*0.38);
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth=2;
+    ctx.strokeRect(W*0.2, H*0.26, W*0.6, H*0.38);
+    ctx.fillStyle = '#e9ecf1';
+    ctx.textAlign = 'center';
+    ctx.font = `${Math.floor(40*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.fillText('Game Over', W/2, H*0.36);
+    ctx.font = `${Math.floor(20*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.fillText(`Score: ${Math.floor(score)}   Best: ${best}`, W/2, H*0.42);
+    ctx.fillStyle = '#cfe1ff';
+    ctx.fillText('Tap to restart', W/2, H*0.50);
+    ctx.restore();
+  }
+
+  // Pause when not visible
+  document.addEventListener('visibilitychange', ()=>{ lastTs = 0; });
+})();
+</script>
+</body>
+</html>
