@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Nico: Paws in the Park — Sheep Edition</title>
+<title>Nico: Paws in the Park — Sheep + Treats + Forest (Final)</title>
 <style>
   html, body { margin:0; height:100%; background:#0b1020; }
   body { display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:manipulation; }
@@ -15,6 +15,7 @@
   }
   .hud .btns { pointer-events:auto; display:flex; gap:6px; }
   .btn { background:#1e2435; color:#e9ecf1; border:1px solid rgba(255,255,255,.12); padding:6px 10px; border-radius:10px; font-size:14px; }
+  .err { position:fixed; bottom:8px; left:8px; right:8px; color:#ffb4b4; font:12px/1.4 system-ui; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -26,11 +27,16 @@
     <button id="restartBtn" class="btn">Restart</button>
   </div>
 </div>
+<div id="err" class="err"></div>
 
 <script>
 (() => {
+  const errEl = document.getElementById('err');
+  function reportErr(e){ errEl.textContent = 'Error: ' + (e && e.message ? e.message : e); }
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  if(!ctx){ reportErr('Canvas not supported'); return; }
 
   // Handle DPI scaling
   let W=0, H=0, DPR=1, SCALE=1;
@@ -91,7 +97,7 @@
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(angleDeg * Math.PI/180);
-    ctx.fillStyle = ctx.strokeStyle = ctx.fillStyle || '#000';
+    ctx.fillStyle = '#0b0b0b';
     ctx.fillRect(-4, 0, 8, 28);
     ctx.beginPath();
     ctx.ellipse(0, 28, 10, 6, 0, 0, Math.PI*2);
@@ -108,13 +114,13 @@
     ctx.closePath();
   }
 
-  // Treat (bone)
-  const drawBone = (x,y,s=1) => {
+  // Treat drawings
+  function drawBone(x,y,s=1, golden=false){
     ctx.save();
     ctx.translate(x,y);
     ctx.scale(s,s);
-    ctx.fillStyle = '#f5ebcf';
-    ctx.strokeStyle = '#c9b997';
+    ctx.fillStyle = golden ? '#ffd65a' : '#f5ebcf';
+    ctx.strokeStyle = golden ? '#e0b53c' : '#c9b997';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(-16, 0, 8, 0, Math.PI*2);
@@ -125,7 +131,27 @@
     ctx.moveTo(-16, 0); ctx.lineTo(16, 0);
     ctx.fill(); ctx.stroke();
     ctx.restore();
-  };
+  }
+  function drawBiscuit(x,y,s=1){
+    ctx.save();
+    ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle='#d7a86e'; ctx.strokeStyle='#b58652'; ctx.lineWidth=2;
+    roundRect(-18,-12,36,24,10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ ctx.beginPath(); ctx.arc(i*8, j*6, 1.8, 0, Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  }
+  function drawSteak(x,y,s=1){
+    ctx.save();
+    ctx.translate(x,y); ctx.scale(s,s);
+    ctx.fillStyle='#d14b4b'; ctx.strokeStyle='#a13a3a'; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(-22,0); ctx.quadraticCurveTo(-10,-20,10,-16); ctx.quadraticCurveTo(24,-10,18,8); ctx.quadraticCurveTo(0,18,-20,12); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle='#fff3f0'; ctx.lineWidth=3;
+    ctx.beginPath(); ctx.moveTo(-10,-6); ctx.quadraticCurveTo(2,-10,10,-4); ctx.stroke();
+    ctx.restore();
+  }
 
   // Sheep obstacle
   function drawSheep(x,y,w,h,phase=0){
@@ -201,7 +227,8 @@
 
   // Obstacles and treats
   const obstacles = []; // {x,y,w,h, type:'sheep', phase, scale}
-  const treats = [];    // {x,y,r}
+  const treats = [];    // {x,y,r,type,points,collected}
+  const floatTexts = []; // {x,y,alpha,vy,txt}
   let nextSpawnT = 0;
   let score = 0;
   let best = Number(localStorage.getItem('nico_best_sheep')||0);
@@ -231,16 +258,51 @@
     return {g, jumpVy};
   }
 
-  // Spawn sheep obstacle
+  // Treat types with weights and points
+  const TREAT_TYPES = [
+    {type:'biscuit', points:10, weight:0.35},
+    {type:'bone',    points:15, weight:0.35},
+    {type:'goldbone',points:30, weight:0.20},
+    {type:'steak',   points:50, weight:0.10}
+  ];
+  function pickTreatType(){
+    let r = Math.random();
+    for(const t of TREAT_TYPES){
+      if(r < t.weight) return t;
+      r -= t.weight;
+    }
+    return TREAT_TYPES[0];
+  }
+
+  // Spawn sheep obstacle + treat
   function spawnObstacle(){
     const s = 0.9 + Math.random()*0.6; // random scale
     const w = 100*SCALE*s;
     const h = 70*SCALE*s;
     const y = world.groundY();
     obstacles.push({x: W + w, y, w, h, type:'sheep', phase: Math.random()*Math.PI*2, scale:s, passed:false});
-    // trailing treat
-    if(Math.random()<0.7){
-      treats.push({ x: W + w + (90+Math.random()*140)*SCALE, y: y - (h + 26*SCALE), r: 16*SCALE, collected:false });
+    // trailing treat(s)
+    if(Math.random()<0.8){
+      const tt = pickTreatType();
+      treats.push({
+        x: W + w + (90+Math.random()*140)*SCALE,
+        y: y - (h + (20+Math.random()*40)*SCALE),
+        r: 16*SCALE,
+        type: tt.type,
+        points: tt.points,
+        collected:false
+      });
+      if(Math.random()<0.25){
+        const tt2 = pickTreatType();
+        treats.push({
+          x: W + w + (220+Math.random()*120)*SCALE,
+          y: y - (h + (28+Math.random()*40)*SCALE),
+          r: 16*SCALE,
+          type: tt2.type,
+          points: tt2.points,
+          collected:false
+        });
+      }
     }
   }
 
@@ -249,6 +311,7 @@
   function reset(startPlay=false){
     obstacles.length = 0;
     treats.length = 0;
+    floatTexts.length = 0;
     world.speed = 340;
     world.t = 0;
     const {g} = phys();
@@ -276,88 +339,99 @@
   // Main loop
   let lastTs = 0;
   function loop(ts){
-    requestAnimationFrame(loop);
-    if(!lastTs) lastTs = ts;
-    let dt = Math.min(0.033, (ts - lastTs)/1000); // clamp to 33ms
-    lastTs = ts;
-    world.t += dt;
+    try{
+      requestAnimationFrame(loop);
+      if(!lastTs) lastTs = ts;
+      let dt = Math.min(0.033, (ts - lastTs)/1000); // clamp to 33ms
+      lastTs = ts;
+      world.t += dt;
 
-    // Clear & background
-    ctx.clearRect(0,0,W,H);
-    drawBackground(dt);
+      // Clear & background
+      ctx.clearRect(0,0,W,H);
+      drawBackground(dt);
 
-    if(state==='menu'){
-      drawGround();
-      drawPlayer(dt);
-      drawObstacles(dt, true);
-      drawTreats(dt);
-      drawTitle();
-      if(jumpQueued){ jumpQueued=false; reset(true); }
-      return;
-    }
-    if(state==='dead'){
-      drawGround();
-      drawPlayer(dt);
-      drawObstacles(dt, true);
-      drawTreats(dt);
-      drawGameOver();
-      if(jumpQueued){ jumpQueued=false; reset(true); }
-      return;
-    }
-
-    // === Update (play) ===
-    const {g, jumpVy} = phys();
-    world.speed += world.speedIncrease;
-    if(jumpQueued && player.onGround){
-      player.vy = jumpVy;
-      player.onGround = false;
-    }
-    jumpQueued = false;
-
-    player.vy += g * dt;
-    player.y += player.vy * dt;
-    const gy = world.groundY() - player.h()/2;
-    if(player.y > gy){ player.y = gy; player.vy = 0; player.onGround = true; }
-    player.legPhase += dt * (player.onGround ? 18 : 0);
-
-    nextSpawnT -= dt;
-    if(nextSpawnT <= 0){
-      spawnObstacle();
-      nextSpawnT = 1.0 + Math.random()*0.9;
-    }
-
-    for(const o of obstacles){
-      o.x -= world.speed * dt;
-      o.phase += dt*6;
-      if(!o.passed && o.x + o.w/2 < player.x() - player.w()/2) o.passed = true;
-    }
-    for(const t of treats){ t.x -= world.speed * dt * 1.02; }
-
-    while(obstacles.length && obstacles[0].x + obstacles[0].w < -50) obstacles.shift();
-    while(treats.length && treats[0].x + treats[0].r < -50) treats.shift();
-
-    const px = player.x(), py = player.y, pw = player.w(), ph = player.h();
-    for(const o of obstacles){
-      if(aabb(px, py, pw, ph, o.x, o.y - o.h/2, o.w*0.9, o.h*0.9)){
-        state = 'dead';
-        best = Math.max(best, Math.floor(score));
-        localStorage.setItem('nico_best_sheep', String(best));
+      if(state==='menu'){
+        drawGround();
+        drawPlayer(dt);
+        drawObstacles(dt, true);
+        drawTreats(dt);
+        drawFloatTexts(dt);
+        drawTitle();
+        if(jumpQueued){ jumpQueued=false; reset(true); }
+        return;
       }
-    }
-    for(const t of treats){
-      if(!t.collected && circleRect(t.x, t.y, t.r, px, py, pw, ph)){
-        t.collected = true;
-        score += 15;
+      if(state==='dead'){
+        drawGround();
+        drawPlayer(dt);
+        drawObstacles(dt, true);
+        drawTreats(dt);
+        drawFloatTexts(dt);
+        drawGameOver();
+        if(jumpQueued){ jumpQueued=false; reset(true); }
+        return;
       }
+
+      // === Update (play) ===
+      const {g, jumpVy} = phys();
+      world.speed += world.speedIncrease;
+      if(jumpQueued && player.onGround){
+        player.vy = jumpVy;
+        player.onGround = false;
+      }
+      jumpQueued = false;
+
+      player.vy += g * dt;
+      player.y += player.vy * dt;
+      const gy = world.groundY() - player.h()/2;
+      if(player.y > gy){ player.y = gy; player.vy = 0; player.onGround = true; }
+      player.legPhase += dt * (player.onGround ? 18 : 0);
+
+      nextSpawnT -= dt;
+      if(nextSpawnT <= 0){
+        spawnObstacle();
+        nextSpawnT = 1.0 + Math.random()*0.9;
+      }
+
+      for(const o of obstacles){
+        o.x -= world.speed * dt;
+        o.phase += dt*6;
+        if(!o.passed && o.x + o.w/2 < player.x() - player.w()/2) o.passed = true;
+      }
+      for(const t of treats){ t.x -= world.speed * dt * 1.02; }
+
+      while(obstacles.length && obstacles[0].x + obstacles[0].w < -50) obstacles.shift();
+      while(treats.length && treats[0].x + treats[0].r < -50) treats.shift();
+
+      const px = player.x(), py = player.y, pw = player.w(), ph = player.h();
+      for(const o of obstacles){
+        if(aabb(px, py, pw, ph, o.x, o.y - o.h/2, o.w*0.9, o.h*0.9)){
+          state = 'dead';
+          best = Math.max(best, Math.floor(score));
+          localStorage.setItem('nico_best_sheep', String(best));
+        }
+      }
+      for(const t of treats){
+        if(!t.collected && circleRect(t.x, t.y, t.r, px, py, pw, ph)){
+          t.collected = true;
+          score += t.points;
+          floatTexts.push({ x: px, y: py - ph*0.6, alpha: 1, vy: -30*SCALE, txt: 'Good boy Nico! +' + t.points });
+        }
+      }
+
+      // time score
+      score += dt * 5; // 5 pts/sec
+      scoreTxt.textContent = 'Score: ' + Math.floor(score) + '  •  Best: ' + best;
+
+      drawGround();
+      drawObstacles(dt);
+      drawTreats(dt);
+      drawPlayer(dt);
+      drawFloatTexts(dt);
+
+      if(errEl.textContent) errEl.textContent = '';
+    } catch (e){
+      reportErr(e);
     }
-
-    score += dt * 5; // 5 pts/sec
-    document.getElementById('scoreTxt').textContent = `Score: ${Math.floor(score)}  •  Best: ${best}`;
-
-    drawGround();
-    drawObstacles(dt);
-    drawTreats(dt);
-    drawPlayer(dt);
   }
   requestAnimationFrame(loop);
 
@@ -382,9 +456,13 @@
       drawCloud(x+100*SCALE, H*0.28, 48*SCALE);
     }
 
-    // distant hills (blue-ish)
-    drawHills(H*0.75, '#3e83d8', 130*SCALE, world.t*12);
-    drawHills(H*0.78, '#2f6ec0', 160*SCALE, world.t*22);
+    // distant hills
+    drawHills(H*0.72, '#6aa3e6', 160*SCALE, world.t*10);
+    drawHills(H*0.76, '#4b8ad8', 190*SCALE, world.t*18);
+
+    // Forest layers (deterministic)
+    drawForestLayer(H*0.78, 120*SCALE, world.t*28, '#2f6e3a', '#1e4b27', 0);
+    drawForestLayer(H*0.79, 160*SCALE, world.t*36, '#3a8546', '#255a30', 1);
   }
   function drawHills(y, color, spacing, speed){
     ctx.fillStyle = color;
@@ -393,9 +471,31 @@
       const x = i*spacing - (speed % spacing);
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x+spacing*0.25, y-spacing*0.20, x+spacing*0.5, y);
-      ctx.quadraticCurveTo(x+spacing*0.75, y+spacing*0.12, x+spacing, y);
+      ctx.quadraticCurveTo(x+spacing*0.25, y-spacing*0.18, x+spacing*0.5, y);
+      ctx.quadraticCurveTo(x+spacing*0.75, y+spacing*0.10, x+spacing, y);
       ctx.closePath();
+      ctx.fill();
+    }
+  }
+  function seededRand(i, layer){
+    const n = (i + 37*layer) * 9301 + 49297;
+    return ((n % 233280) / 233280);
+  }
+  function drawForestLayer(yBase, spacing, speed, canopyColor, trunkColor, layerIdx){
+    const count = Math.ceil(W/spacing)+2;
+    for(let i=0;i<count;i++){
+      const x = i*spacing - (speed % spacing);
+      const r = seededRand(i, layerIdx);
+      const h = (40 + r*24) * SCALE;
+      // trunk
+      ctx.fillStyle = trunkColor;
+      ctx.fillRect(x-4, yBase-h, 8, h);
+      // canopy
+      ctx.fillStyle = canopyColor;
+      ctx.beginPath();
+      ctx.arc(x, yBase-h, 18*SCALE + r*6*SCALE, 0, Math.PI*2);
+      ctx.arc(x-14*SCALE, yBase-h+6*SCALE, 14*SCALE + r*4*SCALE, 0, Math.PI*2);
+      ctx.arc(x+14*SCALE, yBase-h+6*SCALE, 14*SCALE + r*4*SCALE, 0, Math.PI*2);
       ctx.fill();
     }
   }
@@ -408,13 +508,11 @@
   }
   function drawGround(){
     const gy = world.groundY();
-    // green grass
     const grass = ctx.createLinearGradient(0, gy-40, 0, H);
     grass.addColorStop(0, '#49a35b');
     grass.addColorStop(1, '#2e7d32');
     ctx.fillStyle = grass;
     ctx.fillRect(0, gy, W, H-gy);
-    // light highlight line
     ctx.strokeStyle = 'rgba(255,255,255,0.10)';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, gy-1); ctx.lineTo(W, gy-1); ctx.stroke();
@@ -429,7 +527,11 @@
   }
   function drawTreats(){
     for(const t of treats){
-      if(!t.collected) drawBone(t.x, t.y, SCALE*1.2);
+      if(t.collected) continue;
+      if(t.type==='biscuit') drawBiscuit(t.x, t.y, SCALE*1.2);
+      else if(t.type==='bone') drawBone(t.x, t.y, SCALE*1.2, false);
+      else if(t.type==='goldbone') drawBone(t.x, t.y, SCALE*1.25, true);
+      else if(t.type==='steak') drawSteak(t.x, t.y, SCALE*1.2);
     }
     for(const t of treats){
       if(t.collected){
@@ -437,6 +539,28 @@
         t.r *= 0.94;
         if(t.r < 2) t.x = -9999;
       }
+    }
+  }
+  function drawFloatTexts(dt){
+    for(const ft of floatTexts){
+      ft.y += ft.vy * dt;
+      ft.alpha -= dt * 1.2;
+    }
+    for(const ft of floatTexts){
+      if(ft.alpha <= 0) continue;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, ft.alpha));
+      ctx.fillStyle = '#fff3c2';
+      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+      ctx.lineWidth = 3;
+      ctx.textAlign = 'center';
+      ctx.font = Math.floor(24*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
+      ctx.strokeText(ft.txt, ft.x, ft.y);
+      ctx.fillText(ft.txt, ft.x, ft.y);
+      ctx.restore();
+    }
+    for(let i=floatTexts.length-1;i>=0;i--){
+      if(floatTexts[i].alpha <= 0){ floatTexts.splice(i,1); }
     }
   }
   function drawTitle(){
@@ -447,9 +571,9 @@
     ctx.globalAlpha = 1;
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.font = `${Math.floor(44*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.font = Math.floor(44*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillText('Nico: Paws in the Park', W/2, H*0.32);
-    ctx.font = `${Math.floor(20*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.font = Math.floor(20*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillStyle = '#eef7ff';
     ctx.fillText('Tap to jump • Collect treats • Avoid sheep', W/2, H*0.38);
     ctx.fillText('Tap to start', W/2, H*0.48);
@@ -458,17 +582,20 @@
   function drawGameOver(){
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(W*0.2, H*0.26, W*0.6, H*0.38);
+    ctx.fillRect(W*0.2, H*0.26, W*0.6, H*0.42);
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth=2;
-    ctx.strokeRect(W*0.2, H*0.26, W*0.6, H*0.38);
+    ctx.strokeRect(W*0.2, H*0.26, W*0.6, H*0.42);
     ctx.fillStyle = '#e9ecf1';
     ctx.textAlign = 'center';
-    ctx.font = `${Math.floor(40*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
+    ctx.font = Math.floor(40*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
     ctx.fillText('Game Over', W/2, H*0.36);
-    ctx.font = `${Math.floor(20*SCALE)}px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial`;
-    ctx.fillText(`Score: ${Math.floor(score)}   Best: ${best}`, W/2, H*0.42);
+    ctx.font = Math.floor(20*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
+    ctx.fillText('Score: ' + Math.floor(score) + '   Best: ' + best, W/2, H*0.42);
     ctx.fillStyle = '#cfe1ff';
     ctx.fillText('Tap to restart', W/2, H*0.50);
+    ctx.fillStyle = '#f2f6ff';
+    ctx.font = Math.floor(18*SCALE)+'px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial';
+    ctx.fillText('Time to go home Nico, we\\'ll be back again soon', W/2, H*0.56);
     ctx.restore();
   }
 
